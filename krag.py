@@ -88,8 +88,18 @@ def krag_query(question, k=3):
     krag_chain = LLMChain(llm=llm, prompt=krag_prompt)
     return krag_chain.run(context=context, triples_context=triples_context, question=question)
 
+# Load dataset and remove unnecessary columns
+df_data = pd.read_json("/kaggle/input/resume-entities-for-ner/Entity Recognition in Resumes.json", lines=True)
+df_data = df_data.drop(['extras'], axis=1)
+
+# Replace newline characters for uniformity
+df_data['content'] = df_data['content'].str.replace("\n", " ")
+
+# Display a sample of the dataset
+df_data.head()
+
 # Train the model with your domain-specific data
-ner_model = train_ner_model(train_data)
+ner_model = train_ner_model(df_data)
 ner_model.to_disk("./domain_ner_model")
 
 nlp = spacy.load("./domain_ner_model")
@@ -101,10 +111,10 @@ knowledge_graph = build_knowledge_graph(documents)
 embeddings = OpenAIEmbeddings()
 vectorstore = FAISS.from_texts(documents, embeddings)
 llm = OpenAI(temperature=0)
+
 # RAG prompt template
 rag_template = """Context: {context}
 Question: {question}
 Answer:"""
-rag_prompt = PromptTemplate(template=rag_template, input_variables=["context",
-"question"])
+rag_prompt = PromptTemplate(template=rag_template, input_variables=["context", "question"])
 rag_chain = LLMChain(llm=llm, prompt=rag_prompt)
