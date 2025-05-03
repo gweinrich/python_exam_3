@@ -3,16 +3,25 @@ from spacy.tokens import DocBin
 from spacy.util import minibatch, compounding
 import random
 import networkx as nx
-from langchain import OpenAI, PromptTemplate, LLMChain
-from langchain.embeddings import OpenAIEmbeddings
-from langchain.vectorstores import FAISS
+from langchain_community.llms import OpenAI
+from langchain_core.prompts import PromptTemplate
+from langchain.chains import LLMChain
+from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_community.vectorstores import FAISS
+import os
+import pdfplumber
+import pandas as pd
+
+from spacy.training import Example
 
 def train_ner_model(train_data, iterations=30):
     nlp = spacy.blank("en")
     ner = nlp.add_pipe("ner")
+    
     for _, annotations in train_data:
         for ent in annotations.get("entities"):
             ner.add_label(ent[2])
+
     other_pipes = [pipe for pipe in nlp.pipe_names if pipe != "ner"]
     with nlp.disable_pipes(*other_pipes):
         optimizer = nlp.begin_training()
@@ -21,10 +30,15 @@ def train_ner_model(train_data, iterations=30):
             losses = {}
             batches = minibatch(train_data, size=compounding(4., 32., 1.001))
             for batch in batches:
-                texts, annotations = zip(*batch)
-                nlp.update(texts, annotations, drop=0.5, losses=losses)
+                examples = []
+                for text, annotations in batch:
+                    doc = nlp.make_doc(text)
+                    example = Example.from_dict(doc, annotations)
+                    examples.append(example)
+                nlp.update(examples, drop=0.5, losses=losses)
             print(f"Iteration {itn}, Losses: {losses}")
     return nlp
+
 
 def extract_relationships(doc):
     relationships = []
@@ -89,7 +103,7 @@ def krag_query(question, k=3):
     return krag_chain.run(context=context, triples_context=triples_context, question=question)
 
 # Load dataset and remove unnecessary columns
-df_data = pd.read_json("/kaggle/input/resume-entities-for-ner/Entity Recognition in Resumes.json", lines=True)
+df_data = pd.read_json("./Entity Recognition in Resumes.json", lines=True)
 df_data = df_data.drop(['extras'], axis=1)
 
 # Replace newline characters for uniformity
@@ -98,13 +112,38 @@ df_data['content'] = df_data['content'].str.replace("\n", " ")
 # Display a sample of the dataset
 df_data.head()
 
+train_data = []
+for _, row in df_data.iterrows():
+    text = row["content"]
+    raw_entities = row["annotation"]  # Likely a list of dicts with start, end, label
+
+    formatted_entities = []
+    for ent in raw_entities:
+        if isinstance(ent, dict) and "start" in ent and "end" in ent and "label" in ent:
+            formatted_entities.append((ent["start"], ent["end"], ent["label"]))
+        elif isinstance(ent, (list, tuple)) and len(ent) == 3:
+            formatted_entities.append(tuple(ent))  # already valid
+        else:
+            print("Skipping malformed entity:", ent)
+
+    train_data.append((text, {"entities": formatted_entities}))
+
 # Train the model with your domain-specific data
-ner_model = train_ner_model(df_data)
+ner_model = train_ner_model(train_data)
 ner_model.to_disk("./domain_ner_model")
 
 nlp = spacy.load("./domain_ner_model")
 
-documents = [doc1, doc2, ...] # Your corpus
+documents = []
+for filename in os.listdir("./ENGINEERING"):
+    if filename.endswith(".pdf"):
+        file_path = os.path.join("./ENGINEERING", filename)
+        with pdfplumber.open(file_path) as pdf:
+            text = ""
+            for page in pdf.pages:
+                text += page.extract_text() + "\n"
+            documents.append(text.strip())
+
 knowledge_graph = build_knowledge_graph(documents)
 
 # Initialize components
