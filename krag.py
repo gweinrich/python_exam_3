@@ -3,14 +3,19 @@ from spacy.tokens import DocBin
 from spacy.util import minibatch, compounding
 import random
 import networkx as nx
-from langchain_community.llms import OpenAI
-from langchain_core.prompts import PromptTemplate
 from langchain.chains import LLMChain
 from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain_openai import OpenAI
+from langchain_core.prompts import PromptTemplate
+from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 import os
 import pdfplumber
 import pandas as pd
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from spacy.training import Example
 
@@ -102,37 +107,38 @@ def krag_query(question, k=3):
     krag_chain = LLMChain(llm=llm, prompt=krag_prompt)
     return krag_chain.run(context=context, triples_context=triples_context, question=question)
 
-# Load dataset and remove unnecessary columns
-df_data = pd.read_json("./Entity Recognition in Resumes.json", lines=True)
-df_data = df_data.drop(['extras'], axis=1)
+# # Load dataset and remove unnecessary columns
+# df_data = pd.read_json("./Entity Recognition in Resumes.json", lines=True)
+# df_data = df_data.drop(['extras'], axis=1)
 
-# Replace newline characters for uniformity
-df_data['content'] = df_data['content'].str.replace("\n", " ")
+# # Replace newline characters for uniformity
+# df_data['content'] = df_data['content'].str.replace("\n", " ")
 
-# Display a sample of the dataset
-df_data.head()
+# # Display a sample of the dataset
+# df_data.head()
 
-train_data = []
-for _, row in df_data.iterrows():
-    text = row["content"]
-    raw_entities = row["annotation"]  # Likely a list of dicts with start, end, label
+# train_data = []
+# for _, row in df_data.iterrows():
+#     text = row["content"]
+#     raw_entities = row["annotation"]  # Likely a list of dicts with start, end, label
 
-    formatted_entities = []
-    for ent in raw_entities:
-        if isinstance(ent, dict) and "start" in ent and "end" in ent and "label" in ent:
-            formatted_entities.append((ent["start"], ent["end"], ent["label"]))
-        elif isinstance(ent, (list, tuple)) and len(ent) == 3:
-            formatted_entities.append(tuple(ent))  # already valid
-        else:
-            print("Skipping malformed entity:", ent)
+#     formatted_entities = []
+#     for ent in raw_entities:
+#         if isinstance(ent, dict) and "start" in ent and "end" in ent and "label" in ent:
+#             formatted_entities.append((ent["start"], ent["end"], ent["label"]))
+#         elif isinstance(ent, (list, tuple)) and len(ent) == 3:
+#             formatted_entities.append(tuple(ent))  # already valid
+#         else:
+#             print("Skipping malformed entity:", ent)
 
-    train_data.append((text, {"entities": formatted_entities}))
+#     train_data.append((text, {"entities": formatted_entities}))
 
-# Train the model with your domain-specific data
-ner_model = train_ner_model(train_data)
-ner_model.to_disk("./domain_ner_model")
+# # Train the model with your domain-specific data
+# ner_model = train_ner_model(train_data)
+# ner_model.to_disk("./domain_ner_model")
 
 nlp = spacy.load("./domain_ner_model")
+nlp.add_pipe("sentencizer")
 
 documents = []
 for filename in os.listdir("./ENGINEERING"):
@@ -152,8 +158,13 @@ vectorstore = FAISS.from_texts(documents, embeddings)
 llm = OpenAI(temperature=0)
 
 # RAG prompt template
-rag_template = """Context: {context}
-Question: {question}
-Answer:"""
-rag_prompt = PromptTemplate(template=rag_template, input_variables=["context", "question"])
-rag_chain = LLMChain(llm=llm, prompt=rag_prompt)
+# Define a test question
+question = "What engineering experience is described in the documents?"
+
+# Run KRAG query instead of plain RAG
+result = krag_query(question)
+
+# Print the result
+print(result)
+
+print(llm.invoke("Say hello"))
