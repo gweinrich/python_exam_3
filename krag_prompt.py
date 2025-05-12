@@ -13,7 +13,16 @@ from langchain_community.vectorstores import FAISS
 import os
 import pdfplumber
 import pandas as pd
+import psutil
+import time
 from dotenv import load_dotenv
+
+process = psutil.Process(os.getpid())
+
+start_time = time.time()
+start_cpu = process.cpu_percent(interval=None)
+start_mem = process.memory_info().rss
+    
 
 load_dotenv()
 
@@ -132,8 +141,8 @@ if __name__ == "__main__":
         llm = OpenAI(temperature=0)
 
         print("Running KRAG query...")
-        question = "Which applicants have experience in SQL?"
-        relevant_docs = vectorstore.similarity_search(question, k=1)
+        question = "What engineering experience is described in the documents?"
+        relevant_docs = vectorstore.similarity_search(question, k=4)
         context = "\n".join([doc.page_content for doc in relevant_docs])
         relevant_triples = get_relevant_triples(question, knowledge_graph)
         triples_context = "\n".join(relevant_triples)
@@ -157,3 +166,11 @@ Answer:"""
         import traceback
         print("An error occurred:")
         traceback.print_exc()
+
+end_time = time.time()
+end_cpu = process.cpu_percent(interval=None)
+end_mem = process.memory_info().rss  # in bytes
+
+print(f"Execution Time: {end_time - start_time:.4f} seconds")
+print(f"CPU Usage: {end_cpu - start_cpu:.2f}%")
+print(f"Memory Usage: {(end_mem - start_mem) / 1024 / 1024:.4f} MB")

@@ -5,8 +5,16 @@ from langchain_community.vectorstores import FAISS
 import os
 import pdfplumber
 import pandas as pd
+import psutil
+import time
 from dotenv import load_dotenv
 
+process = psutil.Process(os.getpid())
+
+start_time = time.time()
+start_cpu = process.cpu_percent(interval=None)
+start_mem = process.memory_info().rss
+    
 load_dotenv()
 
 # Step 1: Load PDF documents
@@ -29,7 +37,7 @@ vectorstore = FAISS.from_texts(documents, embeddings)
 question = "What engineering experience is described in the documents?"
 
 # Step 4: Perform similarity search to get relevant documents
-relevant_docs = vectorstore.similarity_search(question, k=3)
+relevant_docs = vectorstore.similarity_search(question, k=4)
 
 # Step 5: Extract context from relevant documents
 context = "\n".join([doc.page_content for doc in relevant_docs])
@@ -50,3 +58,11 @@ result = rag_chain.invoke({"context": context, "question": question})
 
 # Output the result
 print(result)
+
+end_time = time.time()
+end_cpu = process.cpu_percent(interval=None)
+end_mem = process.memory_info().rss  # in bytes
+
+print(f"Execution Time: {end_time - start_time:.4f} seconds")
+print(f"CPU Usage: {end_cpu - start_cpu:.2f}%")
+print(f"Memory Usage: {(end_mem - start_mem) / 1024 / 1024:.4f} MB")
