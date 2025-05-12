@@ -90,9 +90,16 @@ def get_relevant_triples(question, graph, k=5):
 if __name__ == "__main__":
     try:
         print("Loading spaCy model...")
-        nlp = spacy.load("./domain_ner_model")
+        nlp = spacy.load("en_core_web_sm")  # Use a full pipeline that includes parser
+        ner = nlp.get_pipe("ner")
+
+        # Optionally load your domain-specific NER model weights if needed
+        # Or add additional NER labels manually like before
+
+        # Add sentencizer if it's missing
         if "sentencizer" not in nlp.pipe_names:
-            nlp.add_pipe("sentencizer", before="ner")  # Add sentence segmentation
+            nlp.add_pipe("sentencizer", before="ner")
+
         print(nlp.pipe_names)
         test_doc = nlp("John worked as a mechanical engineer at XYZ Corp.")
         print([(ent.text, ent.label_) for ent in test_doc.ents])
@@ -125,7 +132,7 @@ if __name__ == "__main__":
         llm = OpenAI(temperature=0)
 
         print("Running KRAG query...")
-        question = "What engineering experience is described in the documents?"
+        question = "Which applicants have experience in SQL?"
         relevant_docs = vectorstore.similarity_search(question, k=1)
         context = "\n".join([doc.page_content for doc in relevant_docs])
         relevant_triples = get_relevant_triples(question, knowledge_graph)
@@ -148,5 +155,5 @@ Answer:"""
 
     except Exception as e:
         import traceback
-        print("❌ An error occurred:")
+        print("An error occurred:")
         traceback.print_exc()

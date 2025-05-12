@@ -13,8 +13,9 @@ from spacy.training import offsets_to_biluo_tags
 
 def check_entity_alignment(nlp, text, entities):
     doc = nlp.make_doc(text)
-    biluo_tags = offsets_to_biluo_tags(doc, entities)
-    print(biluo_tags)
+    # raises ValueError if misaligned
+    _ = offsets_to_biluo_tags(doc, entities)
+
     
 def clean_and_validate_entities(nlp, text, entities):
     doc = nlp.make_doc(text)
@@ -217,45 +218,46 @@ def remove_overlapping_entities(entities):
 # Step 1: Load JSON annotation file
 
 # Step 2: Add the cleaning/conversion function
+
+def load_all_json_files(folder_path):
+    all_data = []
+    for filename in os.listdir(folder_path):
+        if filename.endswith('.json'):
+            file_path = os.path.join(folder_path, filename)
+            with open(file_path, encoding="utf-8") as f:
+                for line in f:
+                    try:
+                        record = json.loads(line)
+                        all_data.append(record)
+                    except json.JSONDecodeError:
+                        print(f"Skipping invalid JSON in {filename}")
+    return all_data
+
 def convert_annotations(data, nlp):
-    spacy_format = []
-    for record in data:
-        text = record['content']
-        entities = []
+    cleaned = []
+    for i, record in enumerate(data):
+        if 'text' not in record or 'annotations' not in record:
+            print(f"Skipping record {i}: Missing 'text' or 'annotations'")
+            continue
+        text = record['text']
+        annotations = record['annotations']
 
-        for ann in record.get('annotation', []):
-            labels = ann.get('label', [])
-            for point in ann.get('points', []):
-                if labels:  # Ensure label exists
-                    start = point['start']
-                    end = point['end']
-                    for label in labels:
-                        entities.append((start, end, label))
-                else:
-                    print("Skipping annotation with no label:", ann)
+        # Convert to (start, end, label) format
+        entities = [(start, end, label.split(":")[-1].strip()) for start, end, label in annotations]
 
-        # Check and remove any overlapping entities
-        entities = remove_overlapping_entities(entities)
+        try:
+            check_entity_alignment(nlp, text, entities)
+            cleaned.append((text, {"entities": entities}))
+        except ValueError as e:
+            print(f"Skipping record {i} due to alignment error: {e}")
+            continue
+    return cleaned
 
-        # Check alignment of entities
-        check_entity_alignment(nlp, text, entities)
-
-        if entities:
-            spacy_format.append((text, {"entities": entities}))
-        else:
-            print("Empty entity list for:", text[:100], "...")
-
-    return spacy_format
-
-
-# Load your raw data
-with open('Entity Recognition in Resumes.json', encoding="utf-8") as f:
-    raw_data = [json.loads(line) for line in f]
-
+# === MAIN ===
+folder_path = './ResumesJsonAnnotated/ResumesJsonAnnotated'
 nlp_tmp = spacy.blank("en")
-
-# Clean and convert the data, now with alignment check
-cleaned_data = convert_annotations(raw_data, nlp_tmp)  # nlp_tmp is your temporary blank spaCy model
+raw_data = load_all_json_files(folder_path)
+cleaned_data = convert_annotations(raw_data, nlp_tmp)
 
 # Train the model as usual
 ner_model = train_ner_model(cleaned_data)
